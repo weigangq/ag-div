@@ -4,7 +4,40 @@ library(dplyr)
 library(reshape2)
 library(MASS)
 library(ape)
-setwd("~/Dropbox/QiuDi/ospc-sim/")
+setwd("../Dropbox/QiuDi/ospc-sim/")
+
+# linearize logistic growth
+x <- read.table("cliff-walk.tsv", header = F)
+x.long <- melt(x, measure.vars = 3:102)
+colnames(x.long) <- c("allele", "pos", "id", "fit")
+x.def <- x.long %>% filter(fit < 1 & fit > 0)
+x.def <- mutate(x.def, f = fit/(1-fit))
+x.def <- mutate(x.def, prob = pos/106)
+x.list <- split(x.def, x.def$allele)
+x.lm <- lapply(x.list, function(y) 
+  { summary(lm(data = y, f ~ prob)) })
+cliff.walk.rates <- lapply(x.lm, function(z) {z$coefficients[2,]})
+cliff.rates <- do.call(rbind, cliff.walk.rates)
+
+ggplot(data = x.def, aes(x=pos/106, y=f)) + geom_point(shape=1, color="gray") + scale_y_log10() + facet_wrap(~allele) + geom_smooth(method="lm", colour = "red", linetype="dashed") + geom_hline(yintercept = 1, linetype="dashed") + geom_vline(xintercept = 0.5, linetype = "dashed")
+
+# plot LON
+library(igraph)
+links <- read.csv("network-oc-edge.csv")
+nodes <- read.csv("network-oc-node.csv")
+net <- graph_from_data_frame(d=links, vertices=nodes, directed=F) 
+V(net)$size <- V(net)$cw50 * 75
+V(net)$color <- rep("white",16)
+E(net)$width <- 1
+E(net)$weight <- E(net)$pw50 * 100
+force.dir <- layout_with_fr(net)
+#layout(c(1,1,2,2), byrow=T)
+par(mfrow=c(1,2))
+net.1 <- delete_edges(net, E(net)[pw50>=0.3])
+plot(net.1, layout = force.dir, main=expression(d<0.3), edge.curved=0)
+#plot(force.dir$extd_graph, main=expression(d<0.3), edge.curved=0)
+net.2 <- delete_edges(net, E(net)[pw50>=0.4])
+plot(net.2, layout = force.dir, main=expression(d<0.4))
 
 # Hamming bound
 perm_without_replacement <- function(n, r){
@@ -167,6 +200,18 @@ x.long <- melt(x, measure.vars = 5:34)
 colnames(x.long) <- c("from", "to", "num.mut", "diff.site", "dummy", "fit")
 
 x.long <- mutate(x.long, prob = num.mut/diff.site, pair = paste(from, to, sep=""))
+x.def <- x.long %>% filter(fit < 1 & fit > 0)
+x.def <- mutate(x.def, f = fit/(1-fit))
+x.list <- split(x.def, x.def$pair)
+x.lm <- lapply(x.list, function(y) 
+{ summary(lm(data = y, f ~ prob)) })
+pair.walk.rates <- lapply(x.lm, function(z) {z$coefficients[2,]})
+pair.rates <- as.data.frame(do.call(rbind, pair.walk.rates))
+
+pair.rates.order <- pair.rates[order(pair.rates$Estimate),]
+#arrange(pair.rates, Estimate) %>% head()
+#arrange(pair.rates, Estimate) %>% tail()
+
 x.list <- split(x.long, x.long$pair)
 
 x.mods <- lapply(x.list, function(x) glm(fit ~ prob, family=binomial(link=logit), data=x))
@@ -201,7 +246,7 @@ ggplot(x.a.df, aes(x=pos/total, y=fit, color=dir)) + geom_line() +
 x <- read.table("cliff-walk.tsv", header = F)
 x.long <- melt(x, measure.vars = 3:102)
 colnames(x.long) <- c("allele", "pos", "id", "fit")
-cw50.brian <- read.table("pw50.tsv", header=T, sep="\t")
+cw50.brian <- read.table("cw50.tsv", header=T, sep="\t")
 cw50.brian <- mutate(cw50.brian, x=0.5)
 cw50 <- data.frame(pos=cw50.brian$fraction*106, fit=cw50.brian$x, allele=cw50.brian$allele)
 
