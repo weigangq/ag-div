@@ -16,13 +16,14 @@ my %opts;
 GetOptions(\%opts,
 #	   "all|a=s",
 #     "mut_site|m=i",
-     "mut_rep|c=i",
-     "mut_step|s=i",
-     "lk|k=s", # likelihood table (as target alleles)
-     "aln|a=s", # alignment of source alleles
-);
+	   "src=s", # define source allele
+	   "mut_rep|c=i",
+	   "mut_step|s=i",
+	   "lk|k=s", # likelihood table (as target alleles)
+	   "aln|a=s", # alignment of source alleles
+    );
 
-die "Usage: $0 -s 5 (with mutation step from 5 [default 1]) -c 100 (repeated runs, default 100) -lk <likelihood table for target alleles (should be made with the same alignment)> -aln <alignment of soruce alleles>\n" unless $opts{'lk'} && $opts{aln};
+die "Usage: $0 -s 5 (with mutation step from 5 [default 1]) -c 100 (repeated runs, default 100) --lk <likelihood table for target alleles (should be made with the same alignment)> --aln <alignment of soruce alleles> [--src <source allele>]\n" unless $opts{'lk'} && $opts{aln};
 
 # 1. Parse likelihood table
 my %lk_table;
@@ -43,11 +44,14 @@ my $aln = Bio::AlignIO->new(-file=>$opts{aln})->next_aln();
 my $seq_len = $aln->length();
 
 my @seq_aas;
-my @ne_ids;
-foreach ($aln->each_seq){
-  my @aa = split //, $_->seq();
-  push @seq_aas, \@aa;
-  push @ne_ids, $_->id() if $_->id =~ /^\S$/;
+my @ne_ids; # reference alleles (has likelihoods)
+my @all_ids; # refs + non-refs
+foreach ($aln->each_seq) {
+    push @all_ids, $_->id();
+    next if $_->id() =~ /^N[12]/;
+    my @aa = split //, $_->seq();
+    push @seq_aas, \@aa;
+    push @ne_ids, $_->id(); #if $_->id =~ /^\S$/;
 }
 @ne_ids = sort @ne_ids;
 
@@ -64,13 +68,21 @@ for (my $i=1; $i<=$seq_len; $i++){
 #print Dumper(\%ref_aas); exit;
 #print scalar keys %ref_aas, "\n"; exit;
 
-my $count = $opts{'mut_rep'} || 100;
+my %src;
+if ($opts{src}) {
+    my @a = split ',', $opts{src};
+    foreach (@a) { $src{$_}++  }
+} else {
+    foreach (@ne_ids) { $src{$_}++ }
+}
+my $count = $opts{'mut_rep'} || 20;
 my $mutRate;
 my ($al_start, $al_end, $id_start, $id_end, %diff_pos, %lk_seed);
-for (my $i = 0; $i <= $#ne_ids; $i++) {
-    $al_start = $aln->get_seq_by_id($ne_ids[$i]);
-    $id_start = $al_start->id();
-    for (my $j = 0; $j <= $#ne_ids; $j++) {
+for (my $i = 0; $i <= $#all_ids; $i++) {
+    next unless $src{$all_ids[$i]};
+    $al_start = $aln->get_seq_by_id($all_ids[$i]);
+    $id_start = $al_start->id(); # source
+    for (my $j = 0; $j <= $#ne_ids; $j++) { # target
 	next if $i == $j;
 	$al_end = $aln->get_seq_by_id($ne_ids[$j]);
 	$id_end = $al_end->id();
