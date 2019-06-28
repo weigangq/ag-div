@@ -20,7 +20,7 @@ GetOptions(\%opts,
      "help|h",
 );
 
-die "Usage: $0 -a J (walk from allele J) -s 1 (with mutation step from 1) lk.txt [this is likelihood table]\n" if $opts{'help'};
+die "Usage: $0 -a J (walk from allele J) -s 1 (with mutation step from 1) -m (num mutations) lk.txt [this is likelihood table]\n" if $opts{'help'};
 
 
 # 1. Parse likelihood table
