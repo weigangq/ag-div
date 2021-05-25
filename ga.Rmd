@@ -1,0 +1,114 @@
+---
+title: "sim-mad"
+author: "Weigang Qiu"
+date: "5/21/2021"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Part 1
+
+Generate maximally divergent 20-bits long binary sequences using genetic algorithms:
+
+```{r}
+library(GA)
+library(stringdist)
+library(tidyverse)
+library(ape)
+
+len.seq <- 20 # length of sequences
+num.alle <- 10 # number of alleles
+size.pair <- num.alle * (num.alle-1)/2
+
+# Fitness function, to maximize the minimal Hamming distance:
+epi.fit <- function(x) { 
+  x.list <- split(x, rep(1:num.alle, each=len.seq))
+  min(seq_distmatrix(x.list, method = "hamming"))/len.seq
+}
+
+# Run genetic algorithm with default parameters:
+mad.ga <- ga(type = "binary", fitness = epi.fit, nBits = len.seq * num.alle, popSize = 200)
+
+plot(mad.ga)
+
+top.pop = mad.ga@solution[1,]
+
+# Split into 20-bit strings & get consensus
+x.list <- split(top.pop, rep(1:num.alle, each=len.seq))
+mad.alleles <- t(as.data.frame(x.list))
+
+# Obtain majority-rule consensus sequences
+consense <- apply(mad.alleles,2, function(x) {table(x)} %>% which.max()-1)
+
+```
+
+## Part 2
+Crossing-over to show max separation of the optimized variants
+```{r}
+
+dist.optimal <- seq_distmatrix(x.list, method = "hamming")/len.seq
+mad.shuffled <- apply(mad.alleles, 2, sample) # permute by column
+xy.list <- split(mad.shuffled, seq(nrow(mad.shuffled)))
+dist.shuffled <- seq_distmatrix(xy.list, method = "hamming")/len.seq
+
+two.dist <- tibble(dist = c(dist.optimal, dist.shuffled), class = c(rep("mad", size.pair), rep("permuted",size.pair)))
+
+two.dist %>% ggplot(aes(x=dist, fill = class)) + geom_density(alpha=0.5) + theme_bw() 
+
+two.dist %>% ggplot(aes(x = class, y = dist)) + geom_boxplot() + geom_jitter(shape=1) + theme_bw() 
+
+t.test(data = two.dist, dist ~ class)
+
+```
+
+## Part 3
+
+Find broadly cross-reactive centroids, again using genetic algorithm:
+
+```{r}
+
+# Fitness function, minimize max distance
+center.fit <- function(x) {
+  ref.alleles <- split(top.pop, rep(1:num.alle, each=len.seq));
+  -1 * max(seq_dist(x, ref.alleles, method = "hamming")/len.seq);
+}
+center.ga <- ga(type = "binary", fitness = center.fit, nBits = len.seq, popSize = 100, maxiter = 200);
+
+plot(center.ga)
+centroid <- center.ga@solution[1,]
+
+```
+
+## Part 4
+
+Construct neighbor-joining tree to validate
+
+```{r}
+x.list[[11]] <- consense
+x.list[[12]] <- centroid
+
+names(x.list) <- c("A01", "A02", "A03", "A04", "A05", "A06", "A07", "A08", "A09", "A10", "Consense", "Centroid")
+
+# distance matrix
+x.dist <- seq_distmatrix(x.list, method = "hamming")
+x.dist
+
+# show varints
+t(as.data.frame(x.list))
+
+# tree
+plot(bionj(x.dist), type = "u", no.margin = T, edge.width = 2)
+add.scale.bar()
+
+```
+
+## Part 5
+
+Show session info
+
+```{r}
+sessionInfo()
+```
