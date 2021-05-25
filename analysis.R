@@ -1,3 +1,276 @@
+library(tidyverse)
+setwd("../../Research-MS2/")
+x <- read.table("dist.tsv", header = T, sep="\t")
+
+ggplot(data = x, aes(x=array.cor, y=odds)) + geom_point() + geom_smooth(method = "lm")
+
+######################
+#  vocano plot for tick data
+######################
+
+# coinfection analysis by permutation
+setwd("C:/Users/lai/Dropbox/QiuDi/ospc-sim")
+
+tick.ind <- read.table("tick-ind.tsv", sep="\t", header = T, row.names = 1)
+tick.nym <- filter(tick.ind, stage=='nymph')
+tick.adt <- filter(tick.ind, stage!='nymph')
+tick.cts <- tick.nym[,1:20]
+tick.cts <- tick.ind[,1:20]
+tick.cts <- tick.adt[,1:20]
+
+tick.mix <- lapply(1:1000, function(i) {apply(tick.cts, 2, function(x) sample(x)) }) # shuffle +/- within an allele
+freq <- apply(tick.ind[1:20], 2, sum)
+
+pair.total <- 0;
+for(i in 1:(ncol(tick.cts)-1)) { # for allle i
+  freq.i <- freq[i];
+  for(j in (i+1):ncol(tick.cts)) { # for allele j
+    freq.j <- freq[j]
+    pair.total <- pair.total +  length(which(tick.cts[,i]==1 & tick.cts[,j]==1));
+  }
+}
+
+out <- data.frame()
+for(i in 1:(ncol(tick.cts)-1)) { # for allle i
+  freq.i <- freq[i];
+  for(j in (i+1):ncol(tick.cts)) { # for allele j
+    freq.j <- freq[j]
+    ob.cts <- length(which(tick.cts[,i]==1 & tick.cts[,j]==1));# num of obs pairs
+    ob.cts <- ifelse(ob.cts > 0, ob.cts, 1); # avoid zero counts
+    exp.cts <- freq.i /sum(freq) * freq.j / sum(freq) * pair.total;
+    sim.cts <- unlist(lapply(tick.mix, function(x) length(which(x[,i]==1 & x[,j]==1)))); # num of sim pairs
+    p.lower <- length(which(sim.cts<=ob.cts))/1000;
+    p.lower <- ifelse(p.lower > 0, p.lower, 1/1000);
+    p.upper <- length(which(sim.cts>=ob.cts))/1000;
+    p.upper <- ifelse(p.upper > 0, p.upper, 1/1000);
+    out<-rbind(out, data.frame(ale.1 = colnames(tick.cts)[i], ale.2 = colnames(tick.cts)[j], odds =log2(ob.cts)-log2(exp.cts), p.value = ifelse(ob.cts > exp.cts, p.upper, p.lower)));
+  }
+}
+
+out.idx <- which(out$ale.1 %in% c("B3", "C14", "vsp", "O") | out$ale.2 %in% c("B3", "C14", "vsp", "O"))
+out.df <- out[-out.idx,]
+out.df <- mutate(out.df, pair = paste(ale.1, ale.2, sep="-"))
+write.table(out.df[,3:5], "tick-pair.tsv", quote=F, col.names = F, row.names = F, sep="\t")
+
+out.df <- mutate(out.df, class = ifelse(p.value <= 0.01, "far", "mid"))
+
+ggplot(data = out.df, aes(x=odds, y=p.value, color = class)) + geom_point() + geom_vline(xintercept = 0) + scale_y_log10() + geom_text_repel(data = subset(out.df, class == "far"), aes(label = pair, size = 3)) + scale_color_manual(breaks=c("mid", "far"), values = c("red", "green")) + geom_hline(yintercept = 0.01, linetype=2) + theme_bw()
+
+
+######################
+#  vocano plot for array
+######################
+setwd("../../Research-MS2/")
+x <- read.csv("mad-supp-info-cor.csv")
+x.far <- filter(x, class == 'far') %>% slice(grep("3", pair, invert = T))
+x.near <- filter(x, class == 'near') %>% slice(grep("3", pair, invert = T))
+
+ggplot(data=x, aes(x=jitter(cor,2,0.05), y=p.value)) + geom_point() + scale_y_log10() + geom_vline(xintercept = 0, linetype=2) + geom_hline(yintercept = 0.01, linetype=2) + geom_text_repel(data = x.near, aes(label = pair, size = 3)) + geom_text_repel(data = x.far, aes(label = pair, size = 3)) + theme_bw()
+
+# Baum data re-analysis (round 2)
+
+baum <- read_csv("../Dropbox/ag-div/Table_S2.csv")
+baum %>% filter(species != 'Human') %>% ggplot(aes(x=sample_id, y=log_intensity, group = sample_id, fill = infected_ctl)) + geom_boxplot()
+human.ctl <- baum %>% filter(infected_ctl == 'control' & species == 'Human') # healthy controls (n=25)
+human.pos <- baum %>% filter(infected_ctl != 'control' & species == 'Human') # Lyme patients (n=55)
+
+mouse.ctl <- baum %>% filter(infected_ctl == 'control' & species != 'Human') # uninfected naive mice (n=7)
+mouse.pos <- baum %>% filter(infected_ctl != 'control' & species != 'Human') # immunized/infected mice (n=23, 6 OC types)
+mouse.ctl.mean <- mouse.ctl %>% group_by(oc_type, array_ag) %>% summarise(mean_int = mean(log_intensity), sd_int = sd(log_intensity))
+mouse.pos <- mouse.pos %>% select(sample_id, oc_type, array_ag, log_intensity) %>% left_join(mouse.ctl.mean, "array_ag")
+# subtract control mean
+mouse.pos <- mouse.pos %>% mutate(fc = log_intensity - mean_int)
+mouse.pos %>% ggplot(aes(x=sample_id, y=fc, group = sample_id)) + geom_boxplot()
+# scale raw intensity by samples (before-ctl)
+mouse.std2 <- mouse.pos %>% group_by(sample_id) %>% summarise(meanInt = mean(log_intensity), sdInt = sd(log_intensity))
+mouse.pos <- mouse.pos %>% left_join(mouse.std2, "sample_id")
+mouse.pos <- mouse.pos %>% mutate(scaledInt = (log_intensity - meanInt)/sdInt)
+mouse.pos %>% ggplot(aes(x=sample_id, y=scaledInt, group = sample_id)) + geom_boxplot()
+mouse.pos %>% ggplot(aes(x=oc_type.x, y=scaledInt, color = oc_type.x)) + geom_jitter(size=3, shape=1) + geom_hline(yintercept = c(0,2), linetype="dashed") + facet_wrap(~array_ag) + theme_bw() 
+
+# scale FC by samples (after ctl)
+mouse.std <- mouse.pos %>% group_by(sample_id) %>% summarise(meanFC = mean(fc), sdFC = sd(fc))
+mouse.pos <- mouse.pos %>% left_join(mouse.std, "sample_id")
+mouse.pos <- mouse.pos %>% mutate(scaledFC = (fc - meanFC)/sdFC)
+mouse.pos %>% ggplot(aes(x=sample_id, y=scaledFC, group = sample_id)) + geom_boxplot()
+mouse.pos %>% ggplot(aes(x=oc_type.x, y= scaledFC, color = oc_type.x)) + geom_jitter(size=3, shape=1) + geom_hline(yintercept = c(0,2), linetype="dashed") + facet_wrap(~array_ag) + theme_bw() 
+
+# ROC analysis
+ag <-levels(factor(mouse.pos$array_ag))
+output <- vector("list")
+for (i in seq_along(ag)) {
+    df <- mouse.pos %>% filter(array_ag == ag[i]) %>% arrange(scaledFC) %>% mutate(cumFC = cumsum(scaledFC))
+    output[[i]] <- df %>% mutate(order = 1:nrow(df)) 
+}
+cum.df <- bind_rows(output)
+cum.max <- cum.df %>% group_by(array_ag) %>% summarise(max = max(order)) %>% left_join(cum.df, c("array_ag", "max" = "order"))
+
+ggplot(data=cum.df, aes(x=order, y=cumFC, color=array_ag, group=array_ag)) + geom_line() + theme_bw() + geom_hline(yintercept = 0, linetype="dashed") + geom_text(data = cum.max, aes(x=max, y=cumFC, label=array_ag), size=4, nudge_x=1) + theme(legend.position = "none")
+
+# Baum human samples
+human.ctl.mean <- human.ctl %>% group_by(oc_type, array_ag) %>% summarise(mean_int = mean(log_intensity), sd_int = sd(log_intensity))
+human.pos <- human.pos %>% select(sample_id, oc_type, array_ag, log_intensity, Lyme_status) %>% left_join(human.ctl.mean, "array_ag")
+# subtract control mean
+human.pos <- human.pos %>% mutate(fc = log_intensity - mean_int)
+human.pos %>% ggplot(aes(x=sample_id, y=fc, group = sample_id)) + geom_boxplot()
+human.std <- human.pos %>% group_by(sample_id) %>% summarise(meanFC = mean(fc), sdFC = sd(fc))
+human.pos <- human.pos %>% left_join(human.std, "sample_id")
+human.pos <- human.pos %>% mutate(scaledFC = (fc - meanFC)/sdFC)
+human.pos %>% ggplot(aes(x=sample_id, y=scaledFC, group = sample_id)) + geom_boxplot()
+human.pos %>% ggplot(aes(x=array_ag, y= scaledFC, color=Lyme_status)) + geom_point(size=2) + geom_segment(aes(x=array_ag, xend=array_ag, y=0, yend=scaledFC)) + geom_hline(yintercept = c(0,2), linetype="dashed") + facet_wrap(~sample_id) + theme_bw() 
+
+# ROC analysis
+ag <-levels(factor(human.pos$array_ag))
+output <- vector("list")
+for (i in seq_along(ag)) {
+  df <- human.pos %>% filter(array_ag == ag[i]) %>% arrange(scaledFC) %>% mutate(cumFC = cumsum(scaledFC))
+  output[[i]] <- df %>% mutate(order = 1:nrow(df)) 
+}
+cum.df <- bind_rows(output)
+cum.max <- cum.df %>% group_by(array_ag) %>% summarise(max = max(order)) %>% left_join(cum.df, c("array_ag", "max" = "order"))
+
+ggplot(data=cum.df, aes(x=order, y=cumFC, color=array_ag, group=array_ag)) + geom_line() + theme_bw() + geom_hline(yintercept = 0, linetype="dashed") + geom_text(data = cum.max, aes(x=max, y=cumFC, label=array_ag), size=4, nudge_x=1) + theme(legend.position = "none") 
+
+
+
+# Ivanova data from Maria
+
+
+#################
+# Table 1. animal sera
+###############
+x <- read_csv("~/Dropbox/LabShared/files-from-Maria-Gomes/extract2.csv")
+x.mat <- as.matrix(x[,2:17])
+rownames(x.mat) <- x$sample
+x.mat <- t(x.mat)
+heatmap(x.mat, scale = "col", Rowv = NA, Colv = NA)
+heatmap(x.mat, scale = "none", Rowv = NA, Colv = NA)
+
+
+x.long <- x %>% pivot_longer(2:17, names_to = "antigen", values_to =  "OD")
+
+x.scaled <- scale(x.mat)
+boxplot(x.scaled)
+
+x.scaled.long <- as.data.frame(x.scaled) %>% mutate(antigen = rownames(x.scaled)) %>% pivot_longer(1:148, names_to = "sample", values_to = "od_scaled")
+
+x.sample <- x %>% select(sample, species)
+x.scaled.long <- x.scaled.long %>% left_join(x.sample, "sample")
+
+x.long %>% filter(species == 'human-EU') %>% ggplot(aes(x=antigen, y=OD)) +  theme_bw() + geom_point(size = 2, color = "blue", fill=alpha("orange", 0.3)) + geom_segment(aes(x=antigen, xend=antigen, y=0, yend=OD)) + facet_wrap(~sample, nrow=5) + title("human-EU")
+
+x.scaled.long %>% filter(species == 'human-EU') %>% ggplot(aes(x=antigen, y=od_scaled)) +  theme_bw() + geom_hline(yintercept = 0, color="gray") + geom_point(size = 2, color = "orange", fill=alpha("orange", 0.3)) +  geom_segment(aes(x=antigen, xend=antigen, y=0, yend=od_scaled)) + facet_wrap(~sample, nrow =5) + xlab("Serum sample (EU)")
+
+#################
+# ROC analysis
+############
+
+ag <-levels(factor(x.scaled.long$antigen))
+sp <-levels(factor(x.scaled.long$species))
+output <- vector("list")
+k <- 1
+for (i in seq_along(ag)) {
+  for (j in seq_along(sp)) {
+    df <- x.scaled.long %>% filter(antigen == ag[i] & species == sp[j]) %>% arrange(od_scaled) %>% mutate(od_cum = cumsum(od_scaled))
+    output[[k]] <- df %>% mutate(order = 1:nrow(df)) 
+  k <- k + 1
+  }
+}
+cum.df <- bind_rows(output)
+cum.max <- cum.df %>% group_by(antigen, species) %>% summarise(max = max(order)) %>% left_join(cum.df, c("antigen", "species", "max" = "order"))
+
+ggplot(data=cum.df, aes(x=order, y=od_cum, color=antigen, group=antigen)) + geom_line() + theme_bw() + geom_hline(yintercept = 0, linetype="dashed") + geom_text(data = cum.max, aes(x=max, y=od_cum, label=antigen), size=4, nudge_x=1) +  facet_wrap(~species) 
+
+
+
+#################
+# Fig 1. OspC-specific serum
+###############
+x <- read_csv("/Users/lai/Dropbox/LabShared/files-from-Maria-Gomes/extracted.csv")
+
+x.neg <- x %>% filter(str_starts(IgG, 'neg'))
+x.neg2 <- t(x.neg[,2:17])
+colnames(x.neg2) <- c("neg1", "neg2", "neg3")
+x.neg2 <- x.neg2 %>% as.data.frame() %>% mutate(antigen = rownames(x.neg2))
+
+x.pos <- x %>% filter(!str_starts(IgG, 'neg'))
+x.long <- x.pos %>% pivot_longer(2:17, names_to = "antigen", values_to =  "OD")
+x.long <- x.long %>% left_join(x.neg2, "antigen")
+x.long <- x.long %>% mutate(OD2 = OD - mean(c(neg1,neg2, neg3)))
+
+x.long %>% ggplot(aes(x=IgG, y=OD2)) + geom_boxplot() + theme_bw() + geom_jitter(color= "blue") + xlab("OspC-specific serum")
+
+x.wide <- x.long %>% dplyr::select(IgG, antigen, OD2) %>% pivot_wider(names_from = IgG, values_from = OD2)
+
+x.mat <- as.matrix(x.wide[,2:16])
+rownames(x.mat) <- x.wide$antigen
+heatmap(x.mat, scale = "col", Rowv = NA, Colv = NA)
+heatmap(x.mat, scale = "none", Rowv = NA, Colv = NA)
+
+x.scaled <- scale(x.mat)
+boxplot(x.scaled)
+
+x.scaled.long <- as.data.frame(x.scaled) %>% mutate(antigen = rownames(x.scaled)) %>% pivot_longer(1:15, names_to = "serum", values_to = "od_scaled")
+
+x.scaled.long %>% ggplot(aes(x=antigen, y=od_scaled)) +  theme_bw() + geom_point(size = 2, color = "red", fill=alpha("red", 0.3)) + geom_hline(yintercept = 0, color="gray")  + geom_hline(yintercept = 2, color="black", linetype="dashed") +  geom_segment(aes(x=antigen, xend=antigen, y=0, yend=od_scaled)) + facet_wrap(~serum, nrow = 3) + ylab("z-score (scaled OD450)")
+
+
+x.scaled.long %>% ggplot(aes(x=serum, y=od_scaled)) +  theme_bw() + geom_point(size = 2, color = "orange", fill=alpha("orange", 0.3)) + geom_hline(yintercept = 0, color="gray")  + geom_hline(yintercept = 2, color="red", linetype="dashed") + geom_segment(aes(x=serum, xend=serum, y=0, yend=od_scaled)) + facet_wrap(~antigen, nrow=2) + xlab("OspC-specific serum") + ylab("z-score (scaled OD450)")
+
+x.long %>% ggplot(aes(x=IgG, y=OD2)) +  theme_bw() + geom_point(size = 2, color = "blue", fill=alpha("blue", 0.3)) + geom_hline(yintercept = 0, color="gray")  +  geom_segment(aes(x=IgG, xend=IgG, y=0, yend=OD2)) + facet_wrap(~antigen, nrow=2) + xlab("OspC-specific serum")
+
+x.scaled.long %>% ggplot(aes(x=serum, y=od_scaled)) + geom_boxplot() + theme_bw() + geom_jitter(color= "orange", size=2) + xlab("OspC-specific serum")
+
+#######
+# ROC plot as specificity
+##############
+ag <-levels(factor(x.scaled.long$antigen))
+output <- vector("list")
+for (i in seq_along(ag)) {
+  output[[i]] <- x.scaled.long %>% filter(antigen == ag[i]) %>% arrange(od_scaled) %>% mutate(od_cum = cumsum(od_scaled)) %>% mutate(order = 1:15) 
+}
+cum.df <- bind_rows(output)
+cum.max <- cum.df %>% group_by(antigen) %>% summarise(max = max(order)) %>% left_join(cum.df, c("antigen", "max" = "order"))
+
+ggplot(data=cum.df, aes(x=order, y=od_cum, label = serum, color=antigen, group=antigen)) + geom_line() + theme_bw() + geom_text() + geom_hline(yintercept = 0, linetype="dashed") + geom_text(data = cum.max, aes(x=max, y=od_cum, label=antigen), size=4, nudge_x=1)  + theme(legend.position = "none") + ylim(-20,13)
+
+# sort by serum
+output <- vector("list")
+for (i in seq_along(ag)) {
+  output[[i]] <- x.scaled.long %>% filter(antigen == ag[i]) %>% arrange(serum) %>% mutate(od_cum = cumsum(od_scaled)) %>% mutate(order = 1:15) 
+}
+cum.df <- bind_rows(output)
+cum.max <- cum.df %>% group_by(antigen) %>% summarise(max = max(order)) %>% left_join(cum.df, c("antigen", "max" = "order"))
+
+ggplot(data=cum.df, aes(x=order, y=od_cum, label = serum, color=antigen, group=antigen)) + geom_line() + theme_bw() + geom_text() + geom_hline(yintercept = 0, linetype="dashed") + geom_text(data = cum.max, aes(x=max, y=od_cum, label=antigen), size=4, nudge_x=1)  + theme(legend.position = "none") + ylim(-20,13)
+
+# randomized by permutation
+summary(x.scaled.long$od_scaled)
+qqnorm(x.scaled.long$od_scaled) # see a jump
+qqline(x.scaled.long$od_scaled) 
+
+x.scaled.long <- x.scaled.long %>% mutate(od_rand = sample(od_scaled))
+
+output <- vector("list")
+for (i in seq_along(ag)) {
+  output[[i]] <- x.scaled.long %>% filter(antigen == ag[i]) %>% arrange(od_rand) %>% mutate(od_cum = cumsum(od_rand)) %>% mutate(order = 1:15) 
+}
+cum.df <- bind_rows(output)
+cum.max <- cum.df %>% group_by(antigen) %>% summarise(max = max(order)) %>% left_join(cum.df, c("antigen", "max" = "order"))
+
+ggplot(data=cum.df, aes(x=order, y=od_cum, label = serum, color=antigen, group=antigen)) + geom_line() + theme_bw() + geom_text() + geom_hline(yintercept = 0, linetype="dashed") + geom_text(data = cum.max, aes(x=max, y=od_cum, label=antigen), size=4, nudge_x=1)  + theme(legend.position = "none") + ylim(-20,13)
+
+output <- vector("list")
+for (i in seq_along(ag)) {
+  output[[i]] <- x.scaled.long %>% filter(antigen == ag[i]) %>% arrange(serum) %>% mutate(od_cum = cumsum(od_rand)) %>% mutate(order = 1:15) 
+}
+cum.df <- bind_rows(output)
+cum.max <- cum.df %>% group_by(antigen) %>% summarise(max = max(order)) %>% left_join(cum.df, c("antigen", "max" = "order"))
+
+ggplot(data=cum.df, aes(x=order, y=od_cum, label = serum, color=antigen, group=antigen)) + geom_line() + theme_bw() + geom_text() + geom_hline(yintercept = 0, linetype="dashed") + geom_text(data = cum.max, aes(x=max, y=od_cum, label=antigen), size=4, nudge_x=1)  + theme(legend.position = "none") + ylim(-20,13)
+
+#################
+
 library(ggplot2)
 library(ggrepel)
 library(dplyr)
@@ -267,8 +540,10 @@ x.mods <- lapply(x.list, function(x) glm(fit ~ prob, family=binomial(link=logit)
 ld50 <- lapply(x.mods, function(m) dose.p(m,p=0.5))
 
 # plot mouse data
-mouse <- read.table("baum-mouse.tsv", header=T)
-m.df <- mouse[,c(3,6,7,10)]
+library(tidyverse)
+baum <- read_tsv("../Dropbox/QiuDi/ospc-sim/baum2.tsv")
+mouse <- read_tsv("../Dropbox/QiuDi/ospc-sim/baum-mouse.tsv")
+m.df <- mouse %>% select(3,6,7,10)
 #arr, infected, logInt, logInt_norm)
 m.melt <- melt(m.df, measure.vars=3:4)
 colnames(m.melt) <- c("array", "infected.allele", "group", "intensity")
