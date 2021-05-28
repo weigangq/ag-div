@@ -9,7 +9,7 @@ output: word_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## Part 1
+## Part 1. Construct MAD populations with and without crossing-over (recombination)
 
 Generate maximally divergent 20-bits long binary sequences using genetic algorithms:
 
@@ -30,41 +30,58 @@ epi.fit <- function(x) {
 }
 
 # Run genetic algorithm with default parameters:
-mad.ga <- ga(type = "binary", fitness = epi.fit, nBits = len.seq * num.alle, popSize = 200)
+mad.ga <- ga(type = "binary", fitness = epi.fit, nBits = len.seq * num.alle, maxiter = 1000)
 
 plot(mad.ga)
 
+
+# Run genetic algorithm without recombination:
+mad.clonal <- ga(type = "binary", fitness = epi.fit, nBits = len.seq * num.alle, maxiter = 1000, pcrossover = 0)
+plot(mad.clonal)
+
 top.pop = mad.ga@solution[1,]
+top.clonal = mad.clonal@solution[1,]
 
 # Split into 20-bit strings & get consensus
 x.list <- split(top.pop, rep(1:num.alle, each=len.seq))
 mad.alleles <- t(as.data.frame(x.list))
+
+x.clonal <- split(top.clonal, rep(1:num.alle, each=len.seq))
+clonal.alleles <- t(as.data.frame(x.clonal))
 
 # Obtain majority-rule consensus sequences
 consense <- apply(mad.alleles,2, function(x) {table(x)} %>% which.max()-1)
 
 ```
 
-## Part 2
-Crossing-over to show max separation of the optimized variants
+## Part 2. Compare seq separation
+
+Compare among variants with crossing-over, without crossing-over, and randomly permuted (with crossing-over). Recombination creates more optimal separation (higher median with low variance).
+
 ```{r}
 
 dist.optimal <- seq_distmatrix(x.list, method = "hamming")/len.seq
+dist.clonal <- seq_distmatrix(x.clonal, method = "hamming")/len.seq
+
 mad.shuffled <- apply(mad.alleles, 2, sample) # permute by column
 xy.list <- split(mad.shuffled, seq(nrow(mad.shuffled)))
 dist.shuffled <- seq_distmatrix(xy.list, method = "hamming")/len.seq
 
-two.dist <- tibble(dist = c(dist.optimal, dist.shuffled), class = c(rep("mad", size.pair), rep("permuted",size.pair)))
+three.dist <- tibble(dist = c(dist.optimal, dist.shuffled, dist.clonal), class = c(rep("mad", size.pair), rep("permuted",size.pair), c(rep("clonal", size.pair))))
 
-two.dist %>% ggplot(aes(x=dist, fill = class)) + geom_density(alpha=0.5) + theme_bw() 
+two.dist <- three.dist %>% filter(class != "permuted")
 
-two.dist %>% ggplot(aes(x = class, y = dist)) + geom_boxplot() + geom_jitter(shape=1) + theme_bw() 
+med <- two.dist %>% group_by(class) %>% summarise(med = median(dist))
+
+two.dist %>% ggplot(aes(x=dist, fill = class)) + geom_density(alpha=0.5) + theme_bw() + geom_vline(data=med, aes(xintercept = med, color=class), size=2)
+
+two.dist %>% ggplot(aes(x = class, y = dist)) + geom_boxplot() + geom_jitter(shape=1) + theme_bw() + geom_hline(yintercept = 0.5, linetype = 2)
 
 t.test(data = two.dist, dist ~ class)
 
 ```
 
-## Part 3
+## Part 3. Obtain centroids
 
 Find broadly cross-reactive centroids, again using genetic algorithm:
 
@@ -82,9 +99,7 @@ centroid <- center.ga@solution[1,]
 
 ```
 
-## Part 4
-
-Construct neighbor-joining tree to validate
+## Part 4. Validation with tree
 
 ```{r}
 x.list[[11]] <- consense
@@ -105,9 +120,7 @@ add.scale.bar()
 
 ```
 
-## Part 5
-
-Show session info
+## Part 5. Show session info
 
 ```{r}
 sessionInfo()
