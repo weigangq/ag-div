@@ -76,46 +76,52 @@ print(test_ab)
 #joined.to_csv("joined.csv")
 # Create linear regression object
 alpha = args.alpha
-reg_ols = linear_model.LinearRegression() # really bad
+#reg_ols = linear_model.LinearRegression() # really bad
 reg_ridge = linear_model.Ridge(alpha = alpha) # okay
-reg_lasso = linear_model.Lasso(alpha = alpha) # bad, uniform
-reg_enet = linear_model.ElasticNet(alpha = alpha, l1_ratio=0.7) # bad, uniform
-reg_lars = linear_model.LassoLars(alpha = alpha) # bad, uniform
+#reg_lasso = linear_model.Lasso(alpha = alpha) # bad, uniform
+#reg_enet = linear_model.ElasticNet(alpha = alpha, l1_ratio=0.7) # bad, uniform
+#reg_lars = linear_model.LassoLars(alpha = alpha) # bad, uniform
+#reg_rob = linear_model.RANSACRegressor() # bad (no penalization)
 
 # Train the model using the training sets
-reg_ols.fit(X_train, y_train)
+#reg_ols.fit(X_train, y_train)
 reg_ridge.fit(X_train, y_train)
-reg_lasso.fit(X_train, y_train)
-reg_enet.fit(X_train, y_train)
-reg_lars.fit(X_train, y_train)
+#reg_lasso.fit(X_train, y_train)
+#reg_enet.fit(X_train, y_train)
+#reg_lars.fit(X_train, y_train)
+#reg_rob.fit(X_train, y_train) 
 
 # Make predictions using the testing set
-y_ols = reg_ols.predict(X_test)
+#y_ols = reg_ols.predict(X_test)
 y_ridge = reg_ridge.predict(X_test)
-y_lasso = reg_lasso.predict(X_test)
-y_enet = reg_enet.predict(X_test)
-y_lars = reg_lars.predict(X_test)
-y_df = pd.DataFrame({"test": y_test, "ols": y_ols, "ridge": y_ridge, 'lasso': y_lasso, "enet": y_enet, 'lars': y_lars, 'ag': test_ag, 'ab': test_ab})
+#y_lasso = reg_lasso.predict(X_test)
+#y_enet = reg_enet.predict(X_test)
+#y_lars = reg_lars.predict(X_test)
+#y_rob = reg_rob.predict(X_test)
+#y_df = pd.DataFrame({"test": y_test, "ols": y_ols, "ridge": y_ridge, 'lasso': y_lasso, "enet": y_enet, 'lars': y_lars, 'ag': test_ag, 'ab': test_ab, 'robust': y_rob})
+y_df = pd.DataFrame({"test": y_test, "ridge": y_ridge, 'ag': test_ag, 'ab': test_ab, 'od.obs': np.exp(-y_test), 'pd.pred': np.exp(-y_ridge)})
+print('Mean squared error:\t%.2f' % mean_squared_error(y_test, y_ridge))
+print('Coefficient of determination:\t%.2f' % r2_score(y_test, y_ridge))
 # The coefficients
 #print('Coefficients: \n', regr.coef_)
 # The mean squared error
-print('Mean squared error:\nOLS\t%.2f\nRidge\t%.2f\nLasso\t%.2f\nEnet\t%.2f\nLars\t%.2f'
-            % (mean_squared_error(y_test, y_ols),
-               mean_squared_error(y_test, y_ridge),
-               mean_squared_error(y_test, y_lasso),
-               mean_squared_error(y_test, y_enet),
-               mean_squared_error(y_test, y_lars)
-            )
-            )
+#print('Mean squared error:\nOLS\t%.2f\nRidge\t%.2f\nLasso\t%.2f\nEnet\t%.2f\nLars\t%.2f'
+#            % (#mean_squared_error(y_test, y_ols),
+#               mean_squared_error(y_test, y_ridge),
+               #mean_squared_error(y_test, y_lasso),
+               #mean_squared_error(y_test, y_enet),
+               #mean_squared_error(y_test, y_lars)
+#            )
+#            )
 # The coefficient of determination: 1 is perfect prediction
-print('Coefficient of determination:\nOLS\t%.2f\nRidge\t%.2f\nLasso\t%.2f\nEnet\t%.2f\nLars\t%.2f'
-            % (r2_score(y_test, y_ols),
-               r2_score(y_test, y_ridge),
-               r2_score(y_test, y_lasso),
-               r2_score(y_test, y_enet),
-               r2_score(y_test, y_lars)
-            )
-)
+#print('Coefficient of determination:\nOLS\t%.2f\nRidge\t%.2f\nLasso\t%.2f\nEnet\t%.2f\nLars\t%.2f'
+#            % (#r2_score(y_test, y_ols),
+#               r2_score(y_test, y_ridge),
+               #r2_score(y_test, y_lasso),
+               #r2_score(y_test, y_enet),
+               #r2_score(y_test, y_lars)
+#            )
+#)
 
 pd.Series(reg_ridge.coef_).to_csv("paramter.csv")
 y_df.to_excel("pred.xlsx")

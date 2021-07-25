@@ -5,12 +5,15 @@
 library(tidyverse)
 library(readxl)
 library(ggrepel)
-setwd("/Users/lai/Dropbox/ag-div/")
-tick.ind <- read_xlsx("Sup-data.xlsx", sheet = 1)
-#tick.nym <- filter(tick.ind, stage=='nymph')
+setwd("../Dropbox/ag-div/")
+#setwd("/Users/lai/Dropbox/ag-div/")
+tick.ind <- read_xlsx("data/Sup-data-master-copy.xlsx", sheet = 1)
+tick.nym <- filter(tick.ind, stage=='nymph')
 #tick.adt <- filter(tick.ind, stage!='nymph')
 #tick.cts <- tick.nym[,1:20]
 #tick.cts <- tick.adt[,1:20]
+
+tick.ind <- tick.nym # using only nymphs
 
 # select 17 most common alleles
 tick.cts <- tick.ind %>% select(c(2,3,5,7:20)) 
